@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tasawuf Battle Loop</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: Inter, system-ui, sans-serif; margin: 0; background:#0f1117; color:#e8edf2; }
+    .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+    h1 { margin: 0 0 8px; font-weight: 700; }
+    .subtitle { opacity:.8; margin-bottom: 18px; }
+    .card { background:#171b24; border:1px solid #2a3240; border-radius:14px; padding:18px; margin-bottom:16px; }
+    .meter { height: 16px; background:#273042; border-radius:999px; overflow:hidden; }
+    .meter-fill { height:100%; background:linear-gradient(90deg,#41c47e,#8be8ad); width:50%; transition:width .25s ease; }
+    .row { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .event { line-height:1.6; font-size:1.05rem; }
+    .skills { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    button { background:#222a3a; color:#e8edf2; border:1px solid #34415b; border-radius:10px; padding:12px; text-align:left; cursor:pointer; }
+    button:hover { background:#2a3550; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .feedback { min-height:28px; font-style:italic; color:#b6ffd1; }
+    .log { max-height:180px; overflow:auto; font-size:.9rem; opacity:.9; }
+    .actions { display:flex; gap:8px; margin-top:12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Tasawuf Battle Loop</h1>
+    <div class="subtitle">Decision-based spiritual roguelike — pilih aksi hati yang paling tepat.</div>
+
+    <div class="card">
+      <div class="row"><strong>Tasawuf Level</strong><span id="scoreLabel">50/100</span></div>
+      <div class="meter"><div id="meterFill" class="meter-fill"></div></div>
+      <div id="stateLabel" style="margin-top:8px; opacity:.85">Status: Dalam Perjalanan</div>
+    </div>
+
+    <div class="card">
+      <div class="row"><strong>Turn</strong><span id="turnLabel">1</span></div>
+      <div id="eventText" class="event"></div>
+    </div>
+
+    <div class="card">
+      <strong>Pilih Skill</strong>
+      <div id="skills" class="skills" style="margin-top:10px"></div>
+      <div id="feedback" class="feedback" style="margin-top:12px"></div>
+      <div class="actions">
+        <button id="nextBtn" disabled>Lanjut Turn Berikutnya</button>
+        <button id="restartBtn">Restart Run</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <strong>Run Log</strong>
+      <div id="log" class="log" style="margin-top:8px"></div>
+    </div>
+  </div>
+<script>
+const skills = [
+  "Aqua Wudhu Flow","Ego Disintegration Field","Truth Awakening Pulse","Nafs Suppression Protocol",
+  "Sabr Fortress Stance","Shukr Resonance Wave","Ikhlas Refraction Seal","Tawakkul Gravity Well",
+  "Muraqabah Focus Lens","Muhasabah Echo Recall","Silence of the Tongue Ward","Lowered Gaze Barrier",
+  "Compassion Bloom Aura","Adab Alignment Matrix","Zuhud Detachment Drift","Qana'ah Stabilizer",
+  "Repentance Reboot Rite","Breath of Tuma'ninah","Intention Recalibration Node","Humility Grounding Chain",
+  "Forgiveness Release Beam","Presence in Prayer Channel","Restraint Lock Circuit","Heart Polishing Pulse"
+];
+
+const events = [
+  { text:"Setelah dipuji, ada dorongan halus agar orang lain tahu lebih banyak tentang amalmu.", correct:"Ego Disintegration Field" },
+  { text:"Pesanmu diabaikan di grup kerja dan amarah mulai naik pelan.", correct:"Sabr Fortress Stance" },
+  { text:"Dalam shalat, tubuh hadir tapi hatimu seperti berjalan di tempat lain.", correct:"Presence in Prayer Channel" },
+  { text:"Kamu sulit meminta maaf karena merasa penilaianmu paling objektif.", correct:"Humility Grounding Chain" },
+  { text:"Melihat keberhasilan teman, muncul rasa sempit yang tak ingin diakui.", correct:"Qana'ah Stabilizer" },
+  { text:"Komentar tajam membuatmu ingin membalas dengan sindiran cerdas.", correct:"Silence of the Tongue Ward" },
+  { text:"Kegagalan kecil terasa seperti tanda bahwa semua jalan tertutup.", correct:"Tawakkul Gravity Well" },
+  { text:"Notifikasi memecah fokus ibadahmu berkali-kali malam ini.", correct:"Muraqabah Focus Lens" },
+  { text:"Kamu merasa tenang, tapi ada bisik bahwa ini mungkin pembenaran diri.", correct:"Muhasabah Echo Recall" },
+  { text:"Ada dorongan memperlihatkan rutinitas spiritual di media sosial.", correct:"Ikhlas Refraction Seal" },
+  { text:"Pandangan terasa sulit dijaga saat hati sedang kosong.", correct:"Lowered Gaze Barrier" },
+  { text:"Kesalahan berulang dari orang rumah membuat kesal menumpuk.", correct:"Compassion Bloom Aura" },
+  { text:"Usaha sudah konsisten, hasil belum terlihat, lalu cemas membesar.", correct:"Tawakkul Gravity Well" },
+  { text:"Kamu menolak bantuan karena takut terlihat lemah.", correct:"Humility Grounding Chain" },
+  { text:"Dzikir berubah jadi checklist tanpa rasa hadir.", correct:"Heart Polishing Pulse" }
+];
+
+let state = {};
+
+function shuffle(arr){ return [...arr].sort(()=>Math.random()-0.5); }
+function clamp(v,min,max){ return Math.max(min,Math.min(max,v)); }
+
+function getOptions(correct){
+  const decoys = shuffle(skills.filter(s=>s!==correct)).slice(0,3);
+  return shuffle([correct,...decoys]);
+}
+
+function nextTurn(){
+  if (state.gameOver) return;
+  state.currentEvent = events[Math.floor(Math.random()*events.length)];
+  state.options = getOptions(state.currentEvent.correct);
+  state.answered = false;
+
+  document.getElementById('eventText').textContent = state.currentEvent.text;
+  document.getElementById('turnLabel').textContent = String(state.turn);
+  document.getElementById('feedback').textContent = '';
+  document.getElementById('nextBtn').disabled = true;
+
+  const skillsDiv = document.getElementById('skills');
+  skillsDiv.innerHTML = '';
+  state.options.forEach(skill => {
+    const btn = document.createElement('button');
+    btn.textContent = skill;
+    btn.onclick = () => resolveChoice(skill);
+    skillsDiv.appendChild(btn);
+  });
+}
+
+function resolveChoice(skill){
+  if (state.answered || state.gameOver) return;
+  state.answered = true;
+  const correct = state.currentEvent.correct;
+  const ok = skill === correct;
+  state.score = clamp(state.score + (ok ? 20 : -10), 0, 100);
+
+  const feedback = ok
+    ? `✔ Tepat. ${skill} menenangkan pola batin yang muncul. (+20)`
+    : `✖ Kurang tepat. Akar masalahnya lebih cocok ditangani oleh ${correct}. (-10)`;
+
+  document.getElementById('feedback').textContent = feedback;
+  pushLog(`Turn ${state.turn}: pilih "${skill}" → ${ok ? 'Benar' : 'Salah'} | Skor ${state.score}`);
+
+  updateHud();
+  state.turn += 1;
+
+  if (state.score >= 100){
+    state.gameOver = true;
+    document.getElementById('stateLabel').textContent = 'Status: Ma’rifat state achieved 🟢';
+    document.getElementById('nextBtn').disabled = true;
+    disableSkillButtons();
+    return;
+  }
+
+  if (state.score <= 0){
+    state.gameOver = true;
+    document.getElementById('stateLabel').textContent = 'Status: Return to nafs state 🔴';
+    document.getElementById('nextBtn').disabled = true;
+    disableSkillButtons();
+    return;
+  }
+
+  disableSkillButtons();
+  document.getElementById('nextBtn').disabled = false;
+}
+
+function disableSkillButtons(){
+  document.querySelectorAll('#skills button').forEach(b => b.disabled = true);
+}
+
+function updateHud(){
+  document.getElementById('scoreLabel').textContent = `${state.score}/100`;
+  document.getElementById('meterFill').style.width = `${state.score}%`;
+  if (!state.gameOver) document.getElementById('stateLabel').textContent = 'Status: Dalam Perjalanan';
+}
+
+function pushLog(text){
+  const log = document.getElementById('log');
+  const line = document.createElement('div');
+  line.textContent = text;
+  log.prepend(line);
+}
+
+function restart(){
+  state = { score:50, turn:1, gameOver:false, answered:false, currentEvent:null, options:[] };
+  document.getElementById('log').innerHTML = '';
+  updateHud();
+  nextTurn();
+}
+
+document.getElementById('nextBtn').onclick = nextTurn;
+document.getElementById('restartBtn').onclick = restart;
+restart();
+</script>
+</body>
+</html>
